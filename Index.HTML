@@ -136,11 +136,12 @@
             const navContainer = document.getElementById('nav-container');
             navContainer.innerHTML = '';
             
+            // Only create navigation buttons if data is present
             if (ALL_MCD_DATA.length === 0) {
-                return; // No data, no tabs
+                return; 
             }
-            
-            // 1. Summary Button
+
+            // 1. Summary Button (Always first)
             navContainer.innerHTML += `
                 <button data-tab="summary" class="nav-button text-stone-700 hover:text-amber-600 py-4 px-3 text-sm font-medium border-b-2 border-transparent">
                     6-Month Summary
@@ -155,10 +156,313 @@
                     </button>
                 `;
             });
+            
+            // 3. Index Button (LAST: after all months)
+            navContainer.innerHTML += `
+                <button data-tab="index" class="nav-button text-stone-700 hover:text-amber-600 py-4 px-3 text-sm font-medium border-b-2 border-transparent">
+                    Index / Assumptions
+                </button>
+            `;
+
             setupNavigation();
         }
-
+        
         // --- 2. TEMPLATE GENERATION FUNCTIONS ---
+
+        function getIndexTemplate() {
+            return `
+                <div id="index" class="page-content hidden space-y-8">
+                    <h2 class="text-3xl font-bold text-stone-800 mb-6">Dashboard Index & Assumptions</h2>
+                    <p class="text-lg text-stone-700 leading-relaxed border-b pb-4 mb-4 border-stone-200">
+                        This index provides the definitive source for all calculation logic, column requirements, tag definitions, and assumptions used throughout the dashboard.
+                    </p>
+
+                    <!-- SECTION 1: DATA PREPARATION & REQUIREMENTS -->
+                    <section class="bg-white p-6 rounded-lg shadow-md border border-stone-200">
+                        <h3 class="text-2xl font-semibold text-amber-700 mb-4">1. Data Preparation & Requirements</h3>
+                        <div class="space-y-4 text-stone-700">
+                            <div>
+                                <h4 class="font-bold text-stone-800">1.1. Required CSV Columns</h4>
+                                <p class="text-sm mb-2">The dashboard requires <strong>five</strong> critical column headers in the uploaded CSV file. Headers are matched robustly (case-insensitive, trim-friendly):</p>
+                                <ul class="list-disc list-inside ml-4 text-sm font-mono mt-2 space-y-1">
+                                    <li><code>Interaction Month</code> - Date field used for grouping data by month</li>
+                                    <li><code>Portal ID</code> - Unique identifier for each customer portal</li>
+                                    <li><code>MCD Tags</code> - Comma-separated list of tags categorizing the MCD</li>
+                                    <li><code>Total Net MRR BOM</code> - Monthly Recurring Revenue at beginning of month</li>
+                                    <li><code>Total Net MRR EOM</code> - Monthly Recurring Revenue at end of month</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-stone-800">1.2. Data Processing Assumptions</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm space-y-2 mt-2">
+                                    <li><strong>Date Parsing:</strong> The <code>Interaction Month</code> field is parsed to extract the first 7 characters (YYYY-MM format). Dates are processed using UTC timezone to prevent local timezone shifts.</li>
+                                    <li><strong>Portal ID Normalization:</strong> Portal IDs are cleaned by removing trailing ".0" suffixes (e.g., "12345.0" becomes "12345").</li>
+                                    <li><strong>MRR Value Cleaning:</strong> MRR values are cleaned by removing spaces, dollar signs, and commas before parsing. Invalid or missing values default to 0.</li>
+                                    <li><strong>Data Filtering:</strong> Rows with empty <code>MCD Tags</code> are excluded from all calculations.</li>
+                                    <li><strong>Month Sorting:</strong> Data is sorted chronologically by month (YYYY-MM) before processing.</li>
+                                    <li><strong>Data Retention:</strong> Only the most recent 6 months of data are retained for analysis.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- SECTION 2: TAG DEFINITIONS & NORMALIZATION -->
+                    <section class="bg-white p-6 rounded-lg shadow-md border border-stone-200">
+                        <h3 class="text-2xl font-semibold text-amber-700 mb-4">2. Tag Definitions & Normalization Logic</h3>
+                        <div class="space-y-4 text-stone-700">
+                            <div>
+                                <h4 class="font-bold text-stone-800">2.1. Tag Processing</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm space-y-2 mt-2">
+                                    <li><strong>Delimiter:</strong> Tags within the <code>MCD Tags</code> column are separated by commas (<code>,</code>).</li>
+                                    <li><strong>Normalization:</strong> All tags are automatically converted to <strong>lowercase</strong> and <strong>trimmed</strong> of whitespace during processing to ensure accurate matching.</li>
+                                    <li><strong>Empty Tag Filtering:</strong> Empty tags (after trimming) are filtered out and not included in any calculations.</li>
+                                    <li><strong>CSV Parsing:</strong> The CSV parser handles quoted fields containing commas, ensuring tags within quotes are preserved correctly.</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-stone-800">2.2. Core Tag Definitions</h4>
+                                <p class="text-sm mb-2">The following tags are used throughout the dashboard for filtering and categorization. All tag matching is case-insensitive after normalization:</p>
+                                
+                                <div class="mt-3 space-y-3">
+                                    <div class="border-l-4 border-amber-600 pl-3">
+                                        <h5 class="font-semibold text-stone-800">Primary Scope Tag</h5>
+                                        <ul class="list-disc list-inside ml-4 text-sm space-y-1 mt-1">
+                                            <li><code>hubspot credits</code> - <strong>Primary filter tag.</strong> All calculated metrics are first filtered to records containing this tag. This is the core scope for credit-related analysis.</li>
+                                        </ul>
+                                    </div>
+                                    
+                                    <div class="border-l-4 border-red-600 pl-3">
+                                        <h5 class="font-semibold text-stone-800">Explicit Refund Tags</h5>
+                                        <p class="text-sm mt-1 mb-1">Any of these tags trigger the Explicit Refund Request count:</p>
+                                        <ul class="list-disc list-inside ml-4 text-sm font-mono space-y-1">
+                                            <li><code>refund</code></li>
+                                            <li><code>refund/credit indicators</code></li>
+                                            <li><code>refund/credit request</code></li>
+                                        </ul>
+                                    </div>
+                                    
+                                    <div class="border-l-4 border-amber-600 pl-3">
+                                        <h5 class="font-semibold text-stone-800">Primary Friction Tags</h5>
+                                        <ul class="list-disc list-inside ml-4 text-sm space-y-1 mt-1">
+                                            <li><code>financial constraints</code> - Measures customer concerns over pricing/cost (Pricing Model Concerns)</li>
+                                            <li><code>accidental purchase/upgrade</code> - Measures customer friction due to accidental oversizing or UI confusion (Accidental Overage Friction)</li>
+                                        </ul>
+                                    </div>
+                                    
+                                    <div class="border-l-4 border-green-600 pl-3">
+                                        <h5 class="font-semibold text-stone-800">Secondary Action Tags</h5>
+                                        <ul class="list-disc list-inside ml-4 text-sm space-y-1 mt-1">
+                                            <li><code>seat change</code> - Measures primary customer action in response to friction (Seat Contraction)</li>
+                                            <li><code>contact downgrade</code> - Measures secondary customer action in response to friction (Contact Contraction)</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-stone-800">2.3. Non-Credit Tag Filtering</h4>
+                                <p class="text-sm">For the "Top Non-Credit MCD Categories" metric, records are filtered to exclude <strong>all</strong> records containing <strong>any</strong> of the following tags:</p>
+                                <ul class="list-disc list-inside ml-4 text-sm font-mono mt-2 space-y-1">
+                                    <li><code>hubspot credits</code></li>
+                                    <li><code>refund</code>, <code>refund/credit indicators</code>, <code>refund/credit request</code></li>
+                                    <li><code>financial constraints</code></li>
+                                    <li><code>accidental purchase/upgrade</code></li>
+                                    <li><code>seat change</code></li>
+                                    <li><code>contact downgrade</code></li>
+                                </ul>
+                                <p class="text-sm mt-2">The remaining tags are counted, sorted by frequency (descending), and the top 3 categories are displayed as the baseline.</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- SECTION 3: CALCULATION LOGIC -->
+                    <section class="bg-white p-6 rounded-lg shadow-md border border-stone-200">
+                        <h3 class="text-2xl font-semibold text-amber-700 mb-4">3. Metric Calculation Logic</h3>
+                        <div class="space-y-6 text-stone-700">
+                            <div>
+                                <h4 class="font-bold text-stone-800">3.1. Core Credit Volume Metrics</h4>
+                                <ul class="list-disc list-inside ml-4 space-y-3 text-sm">
+                                    <li>
+                                        <strong>Total MCDs (Credit-Related):</strong> Count of all records containing the <code>hubspot credits</code> tag.
+                                        <br><span class="text-stone-500 italic">Formula: Count(records where tags includes 'hubspot credits')</span>
+                                    </li>
+                                    <li>
+                                        <strong>Total MCDs (Credit-Related) Percentage:</strong> Percentage of credit-related MCDs out of all MCDs.
+                                        <br><span class="text-stone-500 italic">Formula: (Total Credit MCDs / Total All MCDs) × 100, rounded to 1 decimal place</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div>
+                                <h4 class="font-bold text-stone-800 pt-3 border-t">3.2. Financial Risk Metrics</h4>
+                                <ul class="list-disc list-inside ml-4 space-y-3 text-sm">
+                                    <li>
+                                        <strong>Estimated Refund Risk (MRR Exposed):</strong> Sum of all positive MRR changes (contraction) where a <code>hubspot credits</code> MCD was involved.
+                                        <br><span class="text-stone-500 italic">Formula: Sum(MRR_BOM - MRR_EOM) for all records where (MRR_BOM > MRR_EOM) AND (tags includes 'hubspot credits')</span>
+                                        <br><span class="text-stone-500 italic">Note: Only positive MRR changes (contractions) are included, representing potential refund exposure.</span>
+                                    </li>
+                                    <li>
+                                        <strong>Explicit Refund Requests (Count):</strong> Two-step filter: must be a <code>hubspot credits</code> MCD <strong>AND</strong> must contain at least one of the three Explicit Refund Tags.
+                                        <br><span class="text-stone-500 italic">Formula: Count(Credit MCDs ∩ Explicit Refund Tags)</span>
+                                    </li>
+                                    <li>
+                                        <strong>Explicit Refund Requests (Percentage):</strong> Percentage of credit-related MCDs that contain explicit refund tags.
+                                        <br><span class="text-stone-500 italic">Formula: (Explicit Refund Count / Total Credit MCDs) × 100, rounded to 1 decimal place</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div>
+                                <h4 class="font-bold text-stone-800 pt-3 border-t">3.3. Primary Friction Metrics</h4>
+                                <ul class="list-disc list-inside ml-4 space-y-3 text-sm">
+                                    <li>
+                                        <strong>Pricing Model Concerns (Count):</strong> Count of <code>hubspot credits</code> MCDs that also contain the <code>financial constraints</code> tag.
+                                        <br><span class="text-stone-500 italic">Formula: Count(Credit MCDs where tags includes 'financial constraints')</span>
+                                    </li>
+                                    <li>
+                                        <strong>Pricing Model Concerns (Percentage):</strong> Percentage of credit-related MCDs with pricing concerns.
+                                        <br><span class="text-stone-500 italic">Formula: (Pricing Count / Total Credit MCDs) × 100, rounded to 1 decimal place</span>
+                                    </li>
+                                    <li>
+                                        <strong>Accidental Overage Friction (Count):</strong> Count of <code>hubspot credits</code> MCDs that also contain the <code>accidental purchase/upgrade</code> tag.
+                                        <br><span class="text-stone-500 italic">Formula: Count(Credit MCDs where tags includes 'accidental purchase/upgrade')</span>
+                                    </li>
+                                    <li>
+                                        <strong>Accidental Overage Friction (Percentage):</strong> Percentage of credit-related MCDs with accidental overage friction.
+                                        <br><span class="text-stone-500 italic">Formula: (Accidental Count / Total Credit MCDs) × 100, rounded to 1 decimal place</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div>
+                                <h4 class="font-bold text-stone-800 pt-3 border-t">3.4. Secondary Action Metrics</h4>
+                                <ul class="list-disc list-inside ml-4 space-y-3 text-sm">
+                                    <li>
+                                        <strong>Seat Change (Count):</strong> Count of <code>hubspot credits</code> MCDs that also contain the <code>seat change</code> tag.
+                                        <br><span class="text-stone-500 italic">Formula: Count(Credit MCDs where tags includes 'seat change')</span>
+                                    </li>
+                                    <li>
+                                        <strong>Seat Change (Percentage):</strong> Percentage of credit-related MCDs with seat changes.
+                                        <br><span class="text-stone-500 italic">Formula: (Seat Change Count / Total Credit MCDs) × 100, rounded to 1 decimal place</span>
+                                    </li>
+                                    <li>
+                                        <strong>Contact Downgrade (Count):</strong> Count of <code>hubspot credits</code> MCDs that also contain the <code>contact downgrade</code> tag.
+                                        <br><span class="text-stone-500 italic">Formula: Count(Credit MCDs where tags includes 'contact downgrade')</span>
+                                    </li>
+                                    <li>
+                                        <strong>Contact Downgrade (Percentage):</strong> Percentage of credit-related MCDs with contact downgrades.
+                                        <br><span class="text-stone-500 italic">Formula: (Contact Downgrade Count / Total Credit MCDs) × 100, rounded to 1 decimal place</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div>
+                                <h4 class="font-bold text-stone-800 pt-3 border-t">3.5. Non-Credit Baseline Metrics</h4>
+                                <ul class="list-disc list-inside ml-4 space-y-3 text-sm">
+                                    <li>
+                                        <strong>Top Non-Credit MCD Categories:</strong> Calculated by filtering out all records containing any of the defined credit, pricing, refund, seat, or contact tags. The remaining tags are counted, sorted by frequency (descending), and the top 3 are displayed.
+                                        <br><span class="text-stone-500 italic">Formula: Filter(all MCDs excluding credit-related tags) → Count tags → Sort by frequency → Select top 3</span>
+                                    </li>
+                                    <li>
+                                        <strong>Non-Credit Category Percentage:</strong> For each top category, percentage is calculated relative to total non-credit MCDs.
+                                        <br><span class="text-stone-500 italic">Formula: (Category Count / Total Non-Credit MCDs) × 100, rounded to 1 decimal place</span>
+                                    </li>
+                                </ul>
+                            </div>
+                            
+                            <div>
+                                <h4 class="font-bold text-stone-800 pt-3 border-t">3.6. Portal Activity Metrics</h4>
+                                <ul class="list-disc list-inside ml-4 space-y-3 text-sm">
+                                    <li>
+                                        <strong>Total Unique Portals (All MCDs):</strong> Count of distinct Portal IDs across all MCD records for the month.
+                                        <br><span class="text-stone-500 italic">Formula: Count(Distinct Portal IDs)</span>
+                                    </li>
+                                    <li>
+                                        <strong>Portals with Credit MCDs:</strong> Count of distinct Portal IDs that have at least one credit-related MCD.
+                                        <br><span class="text-stone-500 italic">Formula: Count(Distinct Portal IDs where tags includes 'hubspot credits')</span>
+                                    </li>
+                                    <li>
+                                        <strong>Portals with Multiple MCDs:</strong> Count of Portal IDs that appear in more than one MCD record for the month.
+                                        <br><span class="text-stone-500 italic">Formula: Count(Portal IDs where MCD count > 1)</span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- SECTION 4: DATA PROCESSING ASSUMPTIONS -->
+                    <section class="bg-white p-6 rounded-lg shadow-md border border-stone-200">
+                        <h3 class="text-2xl font-semibold text-amber-700 mb-4">4. Data Processing Assumptions</h3>
+                        <div class="space-y-4 text-stone-700">
+                            <div>
+                                <h4 class="font-bold text-stone-800">4.1. MRR Calculation Assumptions</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm space-y-2 mt-2">
+                                    <li><strong>MRR Change Calculation:</strong> MRR Change = MRR_BOM - MRR_EOM. Positive values indicate contraction (revenue loss), negative values indicate expansion (revenue gain).</li>
+                                    <li><strong>Refund Risk Calculation:</strong> Only positive MRR changes (contractions) from credit-related MCDs are included in the Estimated Refund Risk calculation.</li>
+                                    <li><strong>Value Cleaning:</strong> MRR values are cleaned by removing spaces, dollar signs ($), and commas before parsing. Invalid values default to 0.</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-stone-800">4.2. Date & Time Handling</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm space-y-2 mt-2">
+                                    <li><strong>Month Extraction:</strong> The <code>Interaction Month</code> field is truncated to the first 7 characters (YYYY-MM format).</li>
+                                    <li><strong>UTC Timezone:</strong> All date parsing uses UTC timezone to prevent local timezone shifts that could affect month grouping.</li>
+                                    <li><strong>Month Labeling:</strong> Month labels are generated using UTC methods for consistency (e.g., "January 2024").</li>
+                                    <li><strong>Date ID Generation:</strong> Date IDs are generated as lowercase month abbreviations with year (e.g., "jan-2024").</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-stone-800">4.3. Percentage Calculation Assumptions</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm space-y-2 mt-2">
+                                    <li><strong>Rounding:</strong> All percentages are rounded to 1 decimal place using <code>toFixed(1)</code>.</li>
+                                    <li><strong>Division by Zero:</strong> If the denominator is 0, percentages default to 0 (not NaN or undefined).</li>
+                                    <li><strong>Percentage Base:</strong> All credit-related percentages use "Total Credit MCDs" as the denominator, except "Total MCDs (Credit-Related) Percentage" which uses "Total All MCDs".</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-stone-800">4.4. Data Filtering & Grouping</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm space-y-2 mt-2">
+                                    <li><strong>Month Grouping:</strong> All calculations are performed per month, with data grouped by the extracted YYYY-MM value.</li>
+                                    <li><strong>Chronological Sorting:</strong> Months are sorted chronologically (ascending) before processing and display.</li>
+                                    <li><strong>Data Retention:</strong> Only the most recent 6 months of data are retained after sorting.</li>
+                                    <li><strong>Empty Tag Filtering:</strong> Rows with empty or whitespace-only <code>MCD Tags</code> are excluded from all calculations.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- SECTION 5: DISPLAY & VISUALIZATION ASSUMPTIONS -->
+                    <section class="bg-white p-6 rounded-lg shadow-md border border-stone-200">
+                        <h3 class="text-2xl font-semibold text-amber-700 mb-4">5. Display & Visualization Assumptions</h3>
+                        <div class="space-y-4 text-stone-700">
+                            <div>
+                                <h4 class="font-bold text-stone-800">5.1. Summary Table Display</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm space-y-2 mt-2">
+                                    <li><strong>Trend Sparklines:</strong> The 6-month trend column displays sparkline charts showing the metric's progression over time.</li>
+                                    <li><strong>Sparkline Scaling:</strong> Sparklines are auto-scaled to fit the data range (min: 95% of data minimum, max: 105% of data maximum).</li>
+                                    <li><strong>Color Coding:</strong> Sparklines use different colors based on metric type: red for currency/risk metrics, amber for percentages, blue for counts.</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-stone-800">5.2. Key Takeaways Generation</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm space-y-2 mt-2">
+                                    <li><strong>Comparison Period:</strong> Key takeaways compare the most recent month to the prior month (requires at least 2 months of data).</li>
+                                    <li><strong>Directional Language:</strong> Metrics are described as "increased", "decreased", "improved", "worsened", or "remained stable" based on the change direction.</li>
+                                    <li><strong>Percentage Point Changes:</strong> For percentage metrics, changes are described in "percentage points" (e.g., "moved by 2.5 percentage points").</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-stone-800">5.3. Chart Display Assumptions</h4>
+                                <ul class="list-disc list-inside ml-4 text-sm space-y-2 mt-2">
+                                    <li><strong>Sentiment Chart:</strong> Displays percentages for Pricing, Seat Change, Contact Downgrade, and Accidental Overage, with a maximum Y-axis of 40%.</li>
+                                    <li><strong>Non-Credit Chart:</strong> Displays horizontal bar chart showing the top 3 non-credit categories by count.</li>
+                                    <li><strong>Chart Responsiveness:</strong> Charts are responsive and adjust to container size, with mobile-specific height adjustments.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            `;
+        }
 
         function generateKeyTakeaways(data) {
             if (data.length < 2) return '';
@@ -218,13 +522,15 @@
             }
 
             return `
-                <div id="summary" class="page-content space-y-8">
+                <div id="summary" class="page-content hidden space-y-8">
                     <h2 class="text-3xl font-bold text-stone-800 mb-4">${dateRangeTitle}</h2>
                     
                     <section class="bg-white p-6 rounded-lg shadow-md border border-stone-200 mb-8">
                         <h3 class="text-xl font-semibold text-amber-700 mb-3">Data Upload & Refresh</h3>
                         <p class="text-base text-stone-700 mb-4">
                             To update the dashboard, please upload a combined CSV file containing the 6 months of data, including: <code>Interaction Month</code>, <code>Portal ID</code>, <code>MCD Tags</code>, <code>Total Net MRR BOM</code>, and <code>Total Net MRR EOM</code>.
+                            <br>
+                            <span class="text-sm text-stone-500">For all data definitions and assumptions, please refer to the <strong>Index / Assumptions</strong> tab.</span>
                         </p>
                         <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
                             <input type="file" id="csv-file-input" accept=".csv" class="w-full sm:w-auto text-sm text-stone-500
@@ -243,14 +549,7 @@
                     
                     ${data.length >= 2 ? keyTakeawaysHtml : ''}
                     
-                    <!-- Removed AI Action Plan Section -->
-                    
                     ${data.length > 0 ? `
-                        <section>
-                            <p class="text-lg text-stone-700 leading-relaxed">
-                                This summary view aggregates the key risk indicators and sentiment drivers over the last six months. 
-                            </p>
-                        </section>
                         
                         <div class="bg-white p-6 rounded-lg shadow-md border border-stone-200 overflow-x-auto">
                             <h3 class="text-xl font-semibold text-stone-800 mb-4">Key Credit Risk Metrics</h3>
@@ -817,12 +1116,14 @@
         function parseAndCalculateMetrics(csvText) {
             const rawData = parseCSV(csvText);
             
-            if (!rawData || rawData.length === 0) {
+            if (rawData === null) {
+                return null;
+            }
+            if (rawData.length === 0) {
                 return [];
             }
 
             // --- CONSTANTS (All lowercase for consistent comparison with normalized data) ---
-            // UPDATED: Added 'refund/credit request' to the list of explicit refund tags
             const refundTags = ['refund', 'refund/credit indicators', 'refund/credit request'];
             const creditTag = 'hubspot credits';
             const accidentalTag = 'accidental purchase/upgrade';
@@ -940,32 +1241,47 @@
             const contentContainer = document.getElementById('content-container');
             
             // 1. Create Navigation Buttons (must be done before content is rendered)
-            // Note: createNavButtons calls setupNavigation internally
+            // Note: createNavButtons calls setupNavigation internally and will return early if no data.
             createNavButtons();
 
             // 2. Render all content pages
             let allPagesHtml = '';
-            allPagesHtml += getSummaryTemplate(ALL_MCD_DATA);
-            ALL_MCD_DATA.forEach(data => {
-                allPagesHtml += getMonthlyDetailTemplate(data);
-            });
+            
+            // The Summary page (which contains the upload form) is always the first template rendered.
+            allPagesHtml += getSummaryTemplate(ALL_MCD_DATA); 
+            
+            // Only render detail and index pages if data is present
+            if (ALL_MCD_DATA.length > 0) {
+                // Monthly Detail Pages (must come before Index)
+                ALL_MCD_DATA.forEach(data => {
+                    allPagesHtml += getMonthlyDetailTemplate(data);
+                });
+                
+                // Index / Assumptions Page (LAST)
+                allPagesHtml += getIndexTemplate(); 
+            }
+            
             contentContainer.innerHTML = allPagesHtml;
             
             // 3. Set initial state (Summary tab active, others hidden)
             updateHeaderDates();
             
-            // Activate the Summary button *after* the buttons have been inserted into the DOM.
-            const summaryNavButton = document.querySelector('.nav-button[data-tab="summary"]');
-            if (summaryNavButton) {
-                summaryNavButton.classList.add('active');
+            // The default tab is always 'summary' (which contains the initial upload form).
+            const defaultTabId = 'summary';
+
+            // Hide all pages initially, then show the default one
+            document.querySelectorAll('.page-content').forEach(page => page.classList.add('hidden'));
+            const defaultPage = document.getElementById(defaultTabId);
+            if (defaultPage) {
+                defaultPage.classList.remove('hidden');
             }
-
-            document.getElementById('summary').classList.remove('hidden');
-            ALL_MCD_DATA.forEach(data => {
-                const page = document.getElementById(data.date_id);
-                if (page) page.classList.add('hidden');
-            });
-
+            
+            // Activate the corresponding button
+            const defaultNavButton = document.querySelector(`.nav-button[data-tab="${defaultTabId}"]`);
+            if (defaultNavButton) {
+                defaultNavButton.classList.add('active');
+            }
+            
             // 4. Setup listeners and charts
             setupFileListeners(); 
         }
@@ -973,7 +1289,7 @@
         function initializeCharts() {
             if (ALL_MCD_DATA.length === 0) return;
 
-            // Render charts for all months (they only render if their respective month tab is visible)
+            // Render charts for all months 
             ALL_MCD_DATA.forEach(data => {
                 renderChart(data, 'sentiment');
                 renderChart(data, 'non-credit');
@@ -1044,7 +1360,7 @@
                     try {
                         const newMcdData = parseAndCalculateMetrics(e.target.result);
                         if (newMcdData === null) {
-                             statusElement.textContent = 'Processing error: Missing required column headers (Interaction Month, MCD Tags, Total Net MRR BOM/EOM).';
+                             statusElement.textContent = 'Processing error: Missing required column headers (Interaction Month, MCD Tags, Total Net MRR BOM/EOM). Check Index/Assumptions tab.';
                             statusElement.classList.remove('text-amber-600');
                             statusElement.classList.add('text-red-500');
                             return;
@@ -1056,7 +1372,8 @@
                             renderAllContent(); 
                             initializeCharts(); // Reruns chart and summary table logic
                             
-                            // Manually ensure Summary is active after refresh
+                            // Set the Summary as the active tab after a successful load
+                            document.querySelectorAll('.page-content').forEach(page => page.classList.add('hidden'));
                             document.getElementById('summary').classList.remove('hidden');
                             document.querySelector('.nav-button[data-tab="summary"]').classList.add('active');
 
